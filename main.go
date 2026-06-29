@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -28,13 +29,16 @@ func main() {
 
 	var wg sync.WaitGroup
 
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
 	// start workers
 	for i := 1; i <= workers; i++ {
 		wg.Add(1)
 
 		go func(workerID int) {
 			defer wg.Done()
-			worker(workerID, jobs, results)
+			worker(ctx, workerID, jobs, results)
 		}(i)
 	}
 
@@ -82,12 +86,12 @@ func main() {
 	fmt.Printf("total: %d\n", successCount+errorCount)
 }
 
-func worker(id int, jobs <-chan Job, results chan<- Result) {
+func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result) {
 	for job := range jobs {
 		fmt.Printf("worker %d commence job %d\n", id, job.ID)
 
 		// call process to simulate an error scenario
-		result, err := process(job)
+		result, err := process(ctx, job)
 
 		fmt.Printf("worker %d termine job %d\n", id, job.ID)
 
@@ -101,16 +105,20 @@ func worker(id int, jobs <-chan Job, results chan<- Result) {
 	}
 }
 
-func process(job Job) (int, error) {
+func process(ctx context.Context, job Job) (int, error) {
 	duree := time.Duration(job.Value) * 100 * time.Millisecond
-	time.Sleep(duree)
+
+	select {
+	case <-time.After(duree):
+		// finished working
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 
 	if job.Value%4 == 0 {
 		err := fmt.Errorf("valeur %d interdite: divisible par 4", job.Value)
 		return 0, err
 	}
 
-	result := job.Value * 2
-
-	return result, nil
+	return job.Value * 2, nil
 }
