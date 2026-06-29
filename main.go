@@ -73,7 +73,7 @@ func main() {
 
 	for jobID, res := range resultsByJobID {
 		if !res.Done {
-			fmt.Printf("le job %d n'a jamais été traité\n", jobID)
+			fmt.Printf("job %d sans résultat reçu\n", jobID)
 			skippedCount++
 			continue
 		}
@@ -91,7 +91,7 @@ func main() {
 	fmt.Println("\nRésumé:")
 	fmt.Printf("succès: %d\n", successCount)
 	fmt.Printf("erreurs: %d\n", errorCount)
-	fmt.Printf("non traité/annulé avant traitement: %d\n", skippedCount)
+	fmt.Printf("sans résultat reçu: %d\n", skippedCount)
 	fmt.Printf("total: %d\n", successCount+errorCount+skippedCount)
 }
 
@@ -126,7 +126,14 @@ func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result)
 				Err:      err,
 				Done:     true,
 			}
-			results <- res
+
+			select {
+			case results <- res:
+				continue
+			case <-ctx.Done():
+				fmt.Printf("worker %d arrêté\n", id)
+				return
+			}
 		}
 	}
 }
