@@ -48,7 +48,7 @@ func main() {
 		}
 	}()
 
-	// read results
+	// close results when workers are done
 	go func() {
 		wg.Wait()
 		close(results)
