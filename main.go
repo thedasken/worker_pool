@@ -17,6 +17,7 @@ type Result struct {
 	WorkerID int
 	Value    int
 	Err      error
+	Done     bool
 }
 
 var numbers = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
@@ -62,6 +63,7 @@ func main() {
 
 	successCount := 0
 	errorCount := 0
+	skippedCount := 0
 
 	resultsByJobID := make([]Result, len(numbers))
 
@@ -69,7 +71,13 @@ func main() {
 		resultsByJobID[res.JobID] = res
 	}
 
-	for _, res := range resultsByJobID {
+	for jobID, res := range resultsByJobID {
+		if !res.Done {
+			fmt.Printf("le job %d n'a jamais été traité\n", jobID)
+			skippedCount++
+			continue
+		}
+
 		if res.Err != nil {
 			fmt.Printf("job %d échoué par worker %d => erreur %v\n", res.JobID, res.WorkerID, res.Err)
 			errorCount++
@@ -83,25 +91,43 @@ func main() {
 	fmt.Println("\nRésumé:")
 	fmt.Printf("succès: %d\n", successCount)
 	fmt.Printf("erreurs: %d\n", errorCount)
-	fmt.Printf("total: %d\n", successCount+errorCount)
+	fmt.Printf("non traité/annulé avant traitement: %d\n", skippedCount)
+	fmt.Printf("total: %d\n", successCount+errorCount+skippedCount)
 }
 
 func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result) {
-	for job := range jobs {
-		fmt.Printf("worker %d commence job %d\n", id, job.ID)
-
-		// call process to simulate an error scenario
-		result, err := process(ctx, job)
-
-		fmt.Printf("worker %d termine job %d\n", id, job.ID)
-
-		res := Result{
-			JobID:    job.ID,
-			WorkerID: id,
-			Value:    result,
-			Err:      err,
+	for {
+		if ctx.Err() != nil {
+			fmt.Printf("worker %d arrêté\n", id)
+			return
 		}
-		results <- res
+
+		select {
+		case <-ctx.Done():
+			fmt.Printf("worker %d arrêté\n", id)
+			return
+		case job, ok := <-jobs:
+			if !ok {
+				return
+			}
+
+			if ctx.Err() != nil {
+				fmt.Printf("worker %d arrêté avant traitement du job %d\n", id, job.ID)
+				return
+			}
+
+			fmt.Printf("worker %d commence job %d\n", id, job.ID)
+			result, err := process(ctx, job)
+			fmt.Printf("worker %d termine job %d\n", id, job.ID)
+			res := Result{
+				JobID:    job.ID,
+				WorkerID: id,
+				Value:    result,
+				Err:      err,
+				Done:     true,
+			}
+			results <- res
+		}
 	}
 }
 
