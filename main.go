@@ -2,7 +2,13 @@ package main
 
 import (
 	"fmt"
+	"sync"
 )
+
+type Job struct {
+	ID    int
+	Value int
+}
 
 type Result struct {
 	JobID    int
@@ -15,39 +21,54 @@ var workers = 3
 
 func main() {
 	// channels
-	jobs := make(chan int)
+	jobs := make(chan Job)
 	results := make(chan Result)
+
+	var wg sync.WaitGroup
 
 	// start workers
 	for i := 1; i <= workers; i++ {
-		go worker(i, jobs, results)
+		wg.Add(1)
+
+		go func(workerID int) {
+			defer wg.Done()
+			worker(workerID, jobs, results)
+		}(i)
 	}
 
 	// send jobs
 	go func() {
 		defer close(jobs)
-		for _, v := range numbers {
-			jobs <- v
+		for i, v := range numbers {
+			job := Job{
+				ID:    i,
+				Value: v,
+			}
+			jobs <- job
 		}
 	}()
 
 	// read results
-	for range numbers {
-		res := <-results
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for res := range results {
 		fmt.Printf("job %d traité par worker %d => résultat %d\n", res.JobID, res.WorkerID, res.Value)
 	}
 }
 
-func worker(id int, jobs chan int, results chan Result) {
+func worker(id int, jobs chan Job, results chan Result) {
 	for job := range jobs {
-		fmt.Printf("worker %d commence job %d\n", id, job)
-		result := job * 2
+		fmt.Printf("worker %d commence job %d\n", id, job.ID)
+		result := job.Value * 2
+		fmt.Printf("worker %d termine job %d\n", id, job.ID)
 		res := Result{
-			JobID:    job,
+			JobID:    job.ID,
 			WorkerID: id,
 			Value:    result,
 		}
 		results <- res
-		fmt.Printf("worker %d termine job %d\n", id, job)
 	}
 }
