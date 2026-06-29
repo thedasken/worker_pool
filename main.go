@@ -14,6 +14,7 @@ type Result struct {
 	JobID    int
 	WorkerID int
 	Value    int
+	Err      error
 }
 
 var numbers = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
@@ -55,6 +56,10 @@ func main() {
 	}()
 
 	for res := range results {
+		if res.Err != nil {
+			fmt.Printf("job %d échoué par worker %d => erreur: %v\n", res.JobID, res.WorkerID, res.Err)
+			continue
+		}
 		fmt.Printf("job %d traité par worker %d => résultat %d\n", res.JobID, res.WorkerID, res.Value)
 	}
 }
@@ -62,13 +67,29 @@ func main() {
 func worker(id int, jobs <-chan Job, results chan<- Result) {
 	for job := range jobs {
 		fmt.Printf("worker %d commence job %d\n", id, job.ID)
-		result := job.Value * 2
+
+		// call process to simulate an error scenario
+		result, err := process(job)
+
 		fmt.Printf("worker %d termine job %d\n", id, job.ID)
+
 		res := Result{
 			JobID:    job.ID,
 			WorkerID: id,
 			Value:    result,
+			Err:      err,
 		}
 		results <- res
 	}
+}
+
+func process(job Job) (int, error) {
+	if job.Value%4 == 0 {
+		err := fmt.Errorf("valeur %d interdite: divisible par 4", job.Value)
+		return 0, err
+	}
+
+	result := job.Value * 2
+
+	return result, nil
 }
