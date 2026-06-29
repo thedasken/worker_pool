@@ -21,9 +21,9 @@ var numbers = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 var workers = 3
 
 func main() {
-	// channels
-	jobs := make(chan Job)
-	results := make(chan Result)
+	// buffered channels
+	jobs := make(chan Job, len(numbers))
+	results := make(chan Result, len(numbers))
 
 	var wg sync.WaitGroup
 
@@ -55,13 +55,30 @@ func main() {
 		close(results)
 	}()
 
+	successCount := 0
+	errorCount := 0
+
+	resultsByJobID := make([]Result, len(numbers))
+
 	for res := range results {
+		resultsByJobID[res.JobID] = res
+	}
+
+	for _, res := range resultsByJobID {
 		if res.Err != nil {
-			fmt.Printf("job %d échoué par worker %d => erreur: %v\n", res.JobID, res.WorkerID, res.Err)
+			fmt.Printf("job %d échoué par worker %d => erreur %v\n", res.JobID, res.WorkerID, res.Err)
+			errorCount++
 			continue
 		}
+
 		fmt.Printf("job %d traité par worker %d => résultat %d\n", res.JobID, res.WorkerID, res.Value)
+		successCount++
 	}
+
+	fmt.Println("\nRésumé:")
+	fmt.Printf("succès: %d\n", successCount)
+	fmt.Printf("erreurs: %d\n", errorCount)
+	fmt.Printf("total: %d\n", successCount+errorCount)
 }
 
 func worker(id int, jobs <-chan Job, results chan<- Result) {
