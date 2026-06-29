@@ -20,16 +20,26 @@ type Result struct {
 	Done     bool
 }
 
+type Processor func(context.Context, Job) (int, error)
+
 var numbers = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-var workersCount = 3
+var workerCount = 3
 
 func main() {
-	jobs := make(chan Job, len(numbers))
+	jobList := make([]Job, 0, len(numbers))
+
+	for i, number := range numbers {
+		job := Job{
+			ID:    i,
+			Value: number,
+		}
+		jobList = append(jobList, job)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	resultsByJobID := Run(ctx, jobs, workersCount, len(numbers))
+	resultsByJobID := Run(ctx, jobList, workerCount, process)
 
 	successCount := 0
 	errorCount := 0
@@ -59,7 +69,7 @@ func main() {
 	fmt.Printf("total: %d\n", successCount+errorCount+skippedCount)
 }
 
-func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result) {
+func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result, processor Processor) {
 	for {
 		if ctx.Err() != nil {
 			fmt.Printf("worker %d arrêté\n", id)
@@ -81,7 +91,7 @@ func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result)
 			}
 
 			fmt.Printf("worker %d commence job %d\n", id, job.ID)
-			result, err := process(ctx, job)
+			result, err := processor(ctx, job)
 			fmt.Printf("worker %d termine job %d\n", id, job.ID)
 			res := Result{
 				JobID:    job.ID,
@@ -120,20 +130,29 @@ func process(ctx context.Context, job Job) (int, error) {
 	return job.Value * 2, nil
 }
 
-func Run(ctx context.Context, jobs <-chan Job, workersCount int, jobCount int) []Result {
-	results := make(chan Result, jobCount)
+func Run(ctx context.Context, jobList []Job, workerCount int, processor Processor) []Result {
+	jobs := make(chan Job, len(jobList))
+	results := make(chan Result, len(jobList))
 
 	var wg sync.WaitGroup
 
 	// start workers
-	for i := 1; i <= workersCount; i++ {
+	for i := 1; i <= workerCount; i++ {
 		wg.Add(1)
 
 		go func(workerID int) {
 			defer wg.Done()
-			worker(ctx, workerID, jobs, results)
+			worker(ctx, workerID, jobs, results, processor)
 		}(i)
 	}
+
+	// send jobs
+	go func() {
+		defer close(jobs)
+		for _, job := range jobList {
+			jobs <- job
+		}
+	}()
 
 	// close results when workers are done
 	go func() {
@@ -141,7 +160,7 @@ func Run(ctx context.Context, jobs <-chan Job, workersCount int, jobCount int) [
 		close(results)
 	}()
 
-	resultsByJobID := make([]Result, jobCount)
+	resultsByJobID := make([]Result, len(jobList))
 
 	for res := range results {
 		resultsByJobID[res.JobID] = res
