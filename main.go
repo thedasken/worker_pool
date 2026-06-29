@@ -150,7 +150,12 @@ func Run(ctx context.Context, jobList []Job, workerCount int, processor Processo
 	go func() {
 		defer close(jobs)
 		for _, job := range jobList {
-			jobs <- job
+			select {
+			case jobs <- job:
+				continue
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
