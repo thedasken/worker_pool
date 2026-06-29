@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Job struct {
@@ -101,6 +102,9 @@ func worker(id int, jobs <-chan Job, results chan<- Result) {
 }
 
 func process(job Job) (int, error) {
+	duree := time.Duration(job.Value) * 100 * time.Millisecond
+	time.Sleep(duree)
+
 	if job.Value%4 == 0 {
 		err := fmt.Errorf("valeur %d interdite: divisible par 4", job.Value)
 		return 0, err
