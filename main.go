@@ -59,7 +59,7 @@ func main() {
 	}
 }
 
-func worker(id int, jobs chan Job, results chan Result) {
+func worker(id int, jobs <-chan Job, results chan<- Result) {
 	for job := range jobs {
 		fmt.Printf("worker %d commence job %d\n", id, job.ID)
 		result := job.Value * 2
