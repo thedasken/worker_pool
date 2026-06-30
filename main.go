@@ -26,56 +26,18 @@ var numbers = []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 var workerCount = 3
 
 func main() {
-	jobList := make([]Job, 0, len(numbers))
-
-	for i, number := range numbers {
-		job := Job{
-			ID:    i,
-			Value: number,
-		}
-		jobList = append(jobList, job)
-	}
+	jobList := buildJobs(numbers)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	resultsByJobID := Run(ctx, jobList, workerCount, process)
 
-	successCount := 0
-	errorCount := 0
-	skippedCount := 0
-
-	for jobID, res := range resultsByJobID {
-		if !res.Done {
-			fmt.Printf("job %d sans résultat reçu\n", jobID)
-			skippedCount++
-			continue
-		}
-
-		if res.Err != nil {
-			fmt.Printf("job %d échoué par worker %d => erreur %v\n", res.JobID, res.WorkerID, res.Err)
-			errorCount++
-			continue
-		}
-
-		fmt.Printf("job %d traité par worker %d => résultat %d\n", res.JobID, res.WorkerID, res.Value)
-		successCount++
-	}
-
-	fmt.Println("\nRésumé:")
-	fmt.Printf("succès: %d\n", successCount)
-	fmt.Printf("erreurs: %d\n", errorCount)
-	fmt.Printf("sans résultat reçu: %d\n", skippedCount)
-	fmt.Printf("total: %d\n", successCount+errorCount+skippedCount)
+	printResults(resultsByJobID)
 }
 
 func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result, processor Processor) {
 	for {
-		if ctx.Err() != nil {
-			fmt.Printf("worker %d arrêté\n", id)
-			return
-		}
-
 		select {
 		case <-ctx.Done():
 			fmt.Printf("worker %d arrêté\n", id)
@@ -103,7 +65,6 @@ func worker(ctx context.Context, id int, jobs <-chan Job, results chan<- Result,
 
 			select {
 			case results <- res:
-				continue
 			case <-ctx.Done():
 				fmt.Printf("worker %d arrêté\n", id)
 				return
@@ -117,7 +78,6 @@ func process(ctx context.Context, job Job) (int, error) {
 
 	select {
 	case <-time.After(duree):
-		// finished working
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
@@ -152,7 +112,6 @@ func Run(ctx context.Context, jobList []Job, workerCount int, processor Processo
 		for _, job := range jobList {
 			select {
 			case jobs <- job:
-				continue
 			case <-ctx.Done():
 				return
 			}
@@ -172,4 +131,47 @@ func Run(ctx context.Context, jobList []Job, workerCount int, processor Processo
 	}
 
 	return resultsByJobID
+}
+
+func printResults(resultsByJobID []Result) {
+	successCount := 0
+	errorCount := 0
+	skippedCount := 0
+
+	for jobID, res := range resultsByJobID {
+		if !res.Done {
+			fmt.Printf("job %d sans résultat reçu\n", jobID)
+			skippedCount++
+			continue
+		}
+
+		if res.Err != nil {
+			fmt.Printf("job %d échoué par worker %d => erreur %v\n", res.JobID, res.WorkerID, res.Err)
+			errorCount++
+			continue
+		}
+
+		fmt.Printf("job %d traité par worker %d => résultat %d\n", res.JobID, res.WorkerID, res.Value)
+		successCount++
+	}
+
+	fmt.Println("\nRésumé:")
+	fmt.Printf("succès: %d\n", successCount)
+	fmt.Printf("erreurs: %d\n", errorCount)
+	fmt.Printf("sans résultat reçu: %d\n", skippedCount)
+	fmt.Printf("total: %d\n", successCount+errorCount+skippedCount)
+}
+
+func buildJobs(numbers []int) []Job {
+	jobs := make([]Job, 0, len(numbers))
+
+	for i, number := range numbers {
+		job := Job{
+			ID:    i,
+			Value: number,
+		}
+		jobs = append(jobs, job)
+	}
+
+	return jobs
 }
